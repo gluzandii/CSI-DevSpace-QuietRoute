@@ -619,6 +619,7 @@ dependencies = [
  "petgraph",
  "rayon",
  "serde",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "utils",

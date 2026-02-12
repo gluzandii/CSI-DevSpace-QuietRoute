@@ -36,8 +36,9 @@ fn haversine_dist(c1: &Coord, c2: &Coord) -> f64 {
     r * c
 }
 
-pub fn parse_osm<P: AsRef<Path> + std::fmt::Display>(file_path: P) -> Result<RoadGraph> {
-    tracing::debug!("Loading map from: {file_path}");
+pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
+    let file_path = file_path.as_ref();
+    tracing::debug!("Loading map from: {}", file_path.display());
 
     // 1. Initialize the Graph and lookups
     let mut graph = RoadGraph::new_undirected();
@@ -139,4 +140,138 @@ pub fn parse_osm<P: AsRef<Path> + std::fmt::Display>(file_path: P) -> Result<Roa
         graph.edge_count()
     );
     Ok(graph)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_parse_osm_with_nonexistent_file() {
+        let result = parse_osm("nonexistent_file.osm.pbf");
+        assert!(result.is_err(), "Should fail with nonexistent file");
+    }
+
+    #[test]
+    fn test_parse_osm_with_empty_file() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(b"").unwrap();
+        temp_file.flush().unwrap();
+
+        let result = parse_osm(temp_file.path());
+        // Empty file should either error or return empty graph
+        match result {
+            Ok(graph) => {
+                assert_eq!(
+                    graph.node_count(),
+                    0,
+                    "Empty file should produce empty graph"
+                );
+                assert_eq!(
+                    graph.edge_count(),
+                    0,
+                    "Empty file should produce empty graph"
+                );
+            }
+            Err(_) => {
+                // Also acceptable - parsing empty file may error
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_osm_with_real_file() {
+        // This test requires an actual OSM PBF file
+        // If the file exists in the workspace, test it
+        let test_file = "../data/OSM (Open Map Data)/bengaluru.osm.pbf";
+
+        if std::path::Path::new(test_file).exists() {
+            let result = parse_osm(test_file);
+            assert!(result.is_ok(), "Should successfully parse valid OSM file");
+
+            let graph = result.unwrap();
+            assert!(graph.node_count() > 0, "Graph should contain nodes");
+            assert!(graph.edge_count() > 0, "Graph should contain edges");
+
+            // Verify graph is undirected
+            assert!(!graph.is_directed(), "Graph should be undirected");
+        }
+    }
+
+    #[test]
+    fn test_haversine_dist_calculation() {
+        // Test distance between two known points
+        let coord1 = Coord { lat: 0.0, lon: 0.0 };
+        let coord2 = Coord { lat: 0.0, lon: 0.0 };
+
+        let dist = haversine_dist(&coord1, &coord2);
+        assert_eq!(dist, 0.0, "Distance between same point should be 0");
+
+        // Test with actual coordinates (approximately 1 degree apart)
+        let coord3 = Coord { lat: 0.0, lon: 0.0 };
+        let coord4 = Coord { lat: 1.0, lon: 0.0 };
+
+        let dist2 = haversine_dist(&coord3, &coord4);
+        assert!(
+            dist2 > 110000.0 && dist2 < 112000.0,
+            "Distance should be approximately 111km for 1 degree latitude"
+        );
+    }
+
+    #[test]
+    fn test_is_walkable() {
+        // Test walkable road types
+        assert!(is_walkable("residential"), "residential should be walkable");
+        assert!(is_walkable("pedestrian"), "pedestrian should be walkable");
+        assert!(is_walkable("footway"), "footway should be walkable");
+        assert!(is_walkable("primary"), "primary should be walkable");
+        assert!(is_walkable("cycleway"), "cycleway should be walkable");
+
+        // Test non-walkable road types
+        assert!(!is_walkable("motorway"), "motorway should not be walkable");
+        assert!(!is_walkable("trunk"), "trunk should not be walkable");
+        assert!(!is_walkable("rail"), "rail should not be walkable");
+    }
+
+    #[test]
+    fn test_parse_osm_graph_properties() {
+        let test_file = "../data/OSM (Open Map Data)/bengaluru.osm.pbf";
+
+        if std::path::Path::new(test_file).exists() {
+            let result = parse_osm(test_file);
+
+            if let Ok(graph) = result {
+                // Verify all edges have positive distances
+                for edge in graph.edge_indices() {
+                    if let Some(edge_weight) = graph.edge_weight(edge) {
+                        assert!(
+                            edge_weight.distance_meters >= 0.0,
+                            "Edge distance should be non-negative"
+                        );
+                        assert!(
+                            edge_weight.safety_score == 1.0,
+                            "Default safety score should be 1.0"
+                        );
+                        assert!(!edge_weight.is_lit, "Default is_lit should be false");
+                    }
+                }
+
+                // Verify all nodes have valid coordinates
+                for node in graph.node_indices() {
+                    if let Some(node_weight) = graph.node_weight(node) {
+                        assert!(
+                            node_weight.coord.lat >= -90.0 && node_weight.coord.lat <= 90.0,
+                            "Latitude should be in valid range"
+                        );
+                        assert!(
+                            node_weight.coord.lon >= -180.0 && node_weight.coord.lon <= 180.0,
+                            "Longitude should be in valid range"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
