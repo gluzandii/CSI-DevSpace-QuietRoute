@@ -10,3 +10,5 @@ osmpbf = "0.3"
 petgraph = "0.8"
 # For calculating physical distances (Haversine formula)
 geoutils = "0.5"
+
+anyhow.workspace = true
