@@ -145,12 +145,13 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadNetwork> {
                                 let mid_lat = (start_coord.lat + end_coord.lat) / 2.0;
                                 let mid_lon = (start_coord.lon + end_coord.lon) / 2.0;
                                 let safety_score = safety_layer.get_safety_score(mid_lat, mid_lon);
+                                let is_lit = safety_layer.is_lit(mid_lat, mid_lon);
 
-                                // Create the Edge with calculated Safety Score
+                                // Create the Edge with calculated Safety Score and lighting status
                                 let edge_data = Edge {
                                     distance_meters: dist,
                                     safety_score,
-                                    is_lit: false, // Default: Assume dark
+                                    is_lit,
                                     street_type: h_type.to_string(),
                                 };
 
@@ -319,7 +320,7 @@ mod tests {
                         edge_weight.safety_score >= 0.0 && edge_weight.safety_score <= 1.0,
                         "Safety score should be between 0.0 and 1.0"
                     );
-                    assert!(!edge_weight.is_lit, "Default is_lit should be false");
+                    // is_lit is now calculated from actual light data, can be true or false
                 }
             }
 

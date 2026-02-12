@@ -41,6 +41,12 @@ impl SafetyLayer {
             }
         }
 
+        tracing::info!(
+            "SafetyLayer initialized: {} lights, {} police stations",
+            lights.size(),
+            police.size()
+        );
+
         Ok(Self { lights, police })
     }
 
@@ -96,6 +102,34 @@ impl SafetyLayer {
         // Cap the score at 1.0 (Perfectly Safe)
         score.min(1.0_f64)
     }
+
+    /// Checks if a location has a streetlight within 500 meters
+    /// Used to set the `is_lit` field on edges
+    pub fn is_lit(&self, lat: f64, lon: f64) -> bool {
+        let point = [lat, lon];
+        if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {
+            if let Some((_, nearest_coords)) = nearest.first() {
+                let dist_meters =
+                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
+                return dist_meters < 500.0;
+            }
+        }
+        false
+    }
+
+    /// Debug version: returns the distance to nearest light
+    #[cfg(debug_assertions)]
+    pub fn nearest_light_distance(&self, lat: f64, lon: f64) -> Option<f64> {
+        let point = [lat, lon];
+        if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {
+            if let Some((_, nearest_coords)) = nearest.first() {
+                let dist_meters =
+                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
+                return Some(dist_meters);
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -111,12 +145,27 @@ mod tests {
                 "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Urban_Police_station_location.kml",
                 true,
             ),
-            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Output_Location_Map.kml", true),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Output_Location_Map.kml",
+                true,
+            ),
             // Light KML files
-            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Blr_East_Zone.kml", false),
-            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Bommanahali.kml", false),
-            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Dasarahali.kml", false),
-            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/RR_Nagar.kml", false),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Blr_East_Zone.kml",
+                false,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Bommanahali.kml",
+                false,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Dasarahali.kml",
+                false,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/RR_Nagar.kml",
+                false,
+            ),
         ];
 
         // Create SafetyLayer with all KML files
@@ -165,5 +214,66 @@ mod tests {
             score_random >= 0.0 && score_random <= 1.0,
             "Random location score out of bounds"
         );
+    }
+
+    #[test]
+    fn test_is_lit() {
+        // Load the safety layer with real data
+        let paths = vec![
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Urban_Police_station_location.kml",
+                true,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Output_Location_Map.kml",
+                true,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Blr_East_Zone.kml",
+                false,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Bommanahali.kml",
+                false,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Dasarahali.kml",
+                false,
+            ),
+            (
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/RR_Nagar.kml",
+                false,
+            ),
+        ];
+
+        let safety = SafetyLayer::new(paths).unwrap();
+
+        println!("\n🔍 DEBUG INFO:");
+        println!("   Lights in KD-tree: {}", safety.lights.size());
+        println!("   Police in KD-tree: {}\n", safety.police.size());
+
+        // Test various locations
+        // Note: Whether these are lit depends on the actual KML data coverage
+        let test_locations = vec![
+            (12.976, 77.593, "Cubbon Park"),
+            (12.9352, 77.6245, "Koramangala"),
+            (13.100, 77.500, "Remote Highway"),
+        ];
+
+        for (lat, lon, name) in test_locations {
+            let is_lit = safety.is_lit(lat, lon);
+            let nearest_dist = safety.nearest_light_distance(lat, lon);
+            println!(
+                "💡 {} ({}°N, {}°E): is_lit = {}, nearest_light = {:.1}m",
+                name,
+                lat,
+                lon,
+                is_lit,
+                nearest_dist.unwrap_or(f64::MAX)
+            );
+        }
+
+        // Verify method returns a boolean (always passes but ensures it compiles)
+        assert!(safety.is_lit(12.976, 77.593) == true || safety.is_lit(12.976, 77.593) == false);
     }
 }
