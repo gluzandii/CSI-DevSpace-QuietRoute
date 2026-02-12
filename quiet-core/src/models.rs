@@ -1,49 +1,95 @@
-// quiet_core/src/models.rs
+//! Data models for the road network graph.
+//!
+//! This module defines the core data structures used to represent a walkable
+//! street network with safety metadata. The graph is built from OpenStreetMap data
+//! and enriched with safety scores calculated from streetlight and police station locations.
+
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// 1. A Coordinate (Just a point on Earth)
+/// A geographic coordinate representing a point on Earth.
+///
+/// Uses the WGS84 coordinate system (standard GPS coordinates).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Coord {
+    /// Latitude in decimal degrees (-90 to +90)
     pub lat: f64,
+    /// Longitude in decimal degrees (-180 to +180)
     pub lon: f64,
 }
 
-// 2. A Node (An intersection in the graph)
-// We use u64 for OSM IDs (they are huge numbers)
+/// A node in the street network graph, representing an intersection or waypoint.
+///
+/// Each node corresponds to a point in the OpenStreetMap data where streets meet
+/// or change direction. Nodes are connected by edges (street segments).
 #[derive(Debug, Clone)]
 pub struct Node {
+    /// Unique identifier from OpenStreetMap (uses u64 for large OSM IDs)
     pub id: u64,
+    /// Geographic location of this intersection
     pub coord: Coord,
 }
 
-// 3. An Edge (A street segment connecting two nodes)
+/// An edge in the street network graph, representing a walkable street segment.
+///
+/// Edges connect two nodes and contain metadata about the street's physical properties
+/// and calculated safety characteristics. Each edge has been analyzed using proximity
+/// to streetlights and police stations to generate a safety score.
 #[derive(Debug, Clone)]
 pub struct Edge {
+    /// Physical length of this street segment in meters
     pub distance_meters: f64,
-    pub safety_score: f64,   // 0.0 (Dangerous) to 1.0 (Safe)
-    pub is_lit: bool,        // From your Light Data
-    pub street_type: String, // "residential", "primary", etc.
+    /// Safety score from 0.0 (dangerous) to 1.0 (safe)
+    ///
+    /// Calculated based on proximity to streetlights and police stations.
+    /// Higher scores indicate better lighting and closer emergency services.
+    pub safety_score: f64,
+    /// Whether this street segment has streetlight coverage within 500 meters
+    pub is_lit: bool,
+    /// OpenStreetMap highway type (e.g., "residential", "primary", "footway")
+    pub street_type: String,
 }
 
-// 4. The Graph Type
-// We alias the complex PetGraph type to something simple
+/// Type alias for the undirected graph structure.
+///
+/// Uses petgraph's UnGraph with Node data at vertices and Edge data on connections.
+/// Undirected because streets in Bangalore are bidirectional.
 pub type RoadGraph = petgraph::graph::UnGraph<Node, Edge>;
 
-// 5. Road Network - Contains the graph and lookup maps for the API
+/// Complete road network with graph and lookup tables for fast coordinate-based queries.
+///
+/// This is the primary data structure returned by the OSM parser and used for routing.
+/// It contains the graph itself plus optimized lookup maps for API integration.
 #[derive(Debug, Clone)]
 pub struct RoadNetwork {
+    /// The street network graph with safety-enriched edges
     pub graph: RoadGraph,
-    /// Maps NodeIndex to Coordinate - for converting route results to GeoJSON
+    /// Maps internal NodeIndex to geographic coordinates
+    ///
+    /// Used to convert routing results back to GPS coordinates for GeoJSON output.
     pub node_coords: HashMap<NodeIndex, Coord>,
-    /// Maps OSM Node ID to NodeIndex - for debugging and reference
+    /// Maps original OSM node IDs to internal graph indices
+    ///
+    /// Useful for debugging and cross-referencing with OpenStreetMap data.
     pub osm_to_node: HashMap<i64, NodeIndex>,
 }
 
 impl RoadNetwork {
-    /// Finds the closest graph node to the given latitude and longitude
-    /// This is essential for the REST API to convert user coordinates to graph nodes
+    /// Finds the closest graph node to a given GPS coordinate.
+    ///
+    /// This is essential for API integration - users provide lat/lon coordinates,
+    /// and we need to map those to actual nodes in our street network graph.
+    ///
+    /// # Arguments
+    /// * `lat` - Latitude in decimal degrees
+    /// * `lon` - Longitude in decimal degrees
+    ///
+    /// # Returns
+    /// The NodeIndex of the closest intersection, or None if the graph is empty.
+    ///
+    /// # Performance
+    /// O(n) linear search through all nodes. For production, consider using a spatial index.
     ///
     /// # Example API Flow:
     /// ```ignore
@@ -76,7 +122,16 @@ impl RoadNetwork {
             .map(|(node_idx, _)| *node_idx)
     }
 
-    /// Converts a path (list of NodeIndex) to a list of coordinates for GeoJSON
+    /// Converts a routing path to a list of GPS coordinates.
+    ///
+    /// Takes the output of pathfinding (a sequence of node indices) and converts
+    /// it to geographic coordinates suitable for GeoJSON LineString output.
+    ///
+    /// # Arguments
+    /// * `path` - Sequence of node indices from start to destination
+    ///
+    /// # Returns
+    /// Vector of coordinates representing the route waypoints.
     pub fn path_to_coords(&self, path: &[NodeIndex]) -> Vec<Coord> {
         path.iter()
             .filter_map(|idx| self.node_coords.get(idx))

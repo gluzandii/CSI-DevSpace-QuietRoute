@@ -1,21 +1,55 @@
+//! Safety scoring system using spatial proximity to streetlights and police stations.
+//!
+//! This module provides real-time safety assessment for any geographic coordinate
+//! by analyzing distances to nearby safety infrastructure. Uses KD-trees for
+//! efficient O(log n) spatial queries.
+
 use anyhow::Result;
 use kdtree::{KdTree, distance::squared_euclidean};
 use rayon::prelude::*;
 use std::path::Path;
 
-// We use a KD-Tree to store points.
-// Type: <DistanceType, ObjectData, PointArray>
-// We store the coordinates as data so we can retrieve them
+/// KD-tree type for storing 2D geographic coordinates
 type PointTree = KdTree<f64, [f64; 2], [f64; 2]>;
 
-type KMapFile<P> = (P, bool); // (FilePath, IsPoliceStation)
+/// KML file specification: (file_path, is_police_station)
+type KMapFile<P> = (P, bool);
 
+/// Safety analysis layer built from streetlight and police station locations.
+///
+/// Loads municipal KML data and provides fast spatial queries to calculate
+/// safety scores based on proximity to lights and law enforcement.
+///
+/// # Data Sources
+/// - 196,642 streetlight locations (4 KML files covering Bangalore zones)
+/// - 147 police station locations (2 KML files)
+///
+/// # Performance
+/// Uses KD-trees for O(log n) nearest-neighbor queries instead of O(n) linear scans.
 pub struct SafetyLayer {
+    /// KD-tree containing streetlight coordinates for fast proximity queries
     lights: PointTree,
+    /// KD-tree containing police station coordinates
     police: PointTree,
 }
 
 impl SafetyLayer {
+    /// Creates a new SafetyLayer by loading and indexing KML files.
+    ///
+    /// Parses all KML files in parallel using Rayon for performance,
+    /// then builds KD-trees for efficient spatial queries.
+    ///
+    /// # Arguments
+    /// * `paths` - Vector of (file_path, is_police) tuples specifying KML files to load
+    ///
+    /// # Returns
+    /// A SafetyLayer ready for safety score calculations
+    ///
+    /// # Errors
+    /// Returns an error if any KML file cannot be opened or parsed
+    ///
+    /// # Performance
+    /// Parallelizes file parsing across CPU cores for faster loading.
     pub fn new<P: AsRef<Path> + std::fmt::Display + Send + Sync>(
         paths: Vec<KMapFile<P>>,
     ) -> Result<Self> {
@@ -50,7 +84,32 @@ impl SafetyLayer {
         Ok(Self { lights, police })
     }
 
-    /// Calculates a "Safety Score" (0.0 to 1.0) for a specific coordinate
+    /// Calculates a safety score for a specific geographic coordinate.
+    ///
+    /// Uses graduated distance-based scoring from both streetlights and police stations.
+    /// Closer proximity to safety infrastructure yields higher scores.
+    ///
+    /// # Scoring Algorithm
+    /// **Base score:** 0.5 (neutral)
+    ///
+    /// **Streetlight bonus (graduated by distance):**
+    /// - < 150m: +0.35 (excellent lighting)
+    /// - 150-300m: +0.25 (good lighting)
+    /// - 300-500m: +0.15 (moderate lighting)
+    /// - 500-800m: +0.05 (weak effect)
+    ///
+    /// **Police station bonus (graduated by distance):**
+    /// - < 500m: +0.25 (very safe, walking distance)
+    /// - 500-1km: +0.15 (safe)
+    /// - 1-2km: +0.08 (moderately safe)
+    /// - 2-3km: +0.03 (slight boost)
+    ///
+    /// # Arguments
+    /// * `lat` - Latitude in decimal degrees
+    /// * `lon` - Longitude in decimal degrees
+    ///
+    /// # Returns
+    /// Safety score from 0.0 (dangerous) to 1.0 (very safe), capped at 1.0
     pub fn get_safety_score(&self, lat: f64, lon: f64) -> f64 {
         let point = [lat, lon];
         let mut score: f64 = 0.5; // Base score (Neutral)
@@ -103,8 +162,16 @@ impl SafetyLayer {
         score.min(1.0_f64)
     }
 
-    /// Checks if a location has a streetlight within 500 meters
-    /// Used to set the `is_lit` field on edges
+    /// Checks if a location has streetlight coverage.
+    ///
+    /// Used to set the `is_lit` boolean flag on street edges.
+    ///
+    /// # Arguments
+    /// * `lat` - Latitude in decimal degrees
+    /// * `lon` - Longitude in decimal degrees
+    ///
+    /// # Returns
+    /// `true` if a streetlight exists within 500 meters, `false` otherwise
     pub fn is_lit(&self, lat: f64, lon: f64) -> bool {
         let point = [lat, lon];
         if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {
@@ -117,8 +184,16 @@ impl SafetyLayer {
         false
     }
 
-    /// Debug version: returns the distance to nearest light
-    #[cfg(debug_assertions)]
+    /// Debug helper: Returns the distance to the nearest streetlight.
+    ///
+    /// Useful for testing and understanding light coverage density.
+    ///
+    /// # Arguments
+    /// * `lat` - Latitude in decimal degrees
+    /// * `lon` - Longitude in decimal degrees
+    ///
+    /// # Returns
+    /// Distance in meters to nearest light, or None if no lights in tree
     pub fn nearest_light_distance(&self, lat: f64, lon: f64) -> Option<f64> {
         let point = [lat, lon];
         if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {

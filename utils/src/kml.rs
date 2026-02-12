@@ -1,8 +1,30 @@
+//! KML file parser for extracting geographic coordinates.
+//!
+//! Parses KML (Keyhole Markup Language) XML files used by Google Earth
+//! to extract point coordinates for streetlights and police stations.
+
 use anyhow::Result;
 use quick_xml::{Reader, events::Event};
 use std::{fs::File, io::BufReader, path::Path};
 
-/// Parses a KML file and extracts coordinates (can be called in parallel)
+/// Parses a KML file and extracts all coordinate points.
+///
+/// Designed for parallel execution - can be called concurrently on multiple files.
+/// Searches for `<coordinates>` tags and parses lat/lon pairs.
+///
+/// # Arguments
+/// * `path` - Path to the KML file
+/// * `is_police` - Whether this file contains police stations (vs streetlights)
+///
+/// # Returns
+/// A tuple of (coordinate_array, is_police) where coordinates are [lat, lon] pairs
+///
+/// # KML Format
+/// Expects coordinates in "lon,lat,alt" format (note: lon before lat in KML)
+/// Example: `<coordinates>77.5,12.9,0.0</coordinates>`
+///
+/// # Errors
+/// Returns an error if the file cannot be opened or parsed
 pub fn parse_kml_coordinates(path: &Path, is_police: bool) -> Result<(Vec<[f64; 2]>, bool)> {
     tracing::debug!("Loading safety data from: {}", path.display());
 

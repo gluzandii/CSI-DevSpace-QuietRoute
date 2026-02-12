@@ -1,4 +1,9 @@
-/// Calculates the Haversine distance between two points in meters
+//! Geographic utility functions for distance calculations.
+//!
+//! Provides the Haversine formula implementation for calculating
+//! great-circle distances between geographic coordinates on Earth.
+
+/// Calculates the Haversine distance between two points in meters.
 ///
 /// # Arguments
 /// * `lat1` - Latitude of first point in degrees
