@@ -50,14 +50,20 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
     println!("🧭 Finding Safe Route\n");
 
-    // Example: Cubbon Park to MG Road (famous Bangalore landmarks)
-    let start_lat = 12.980858;
-    let start_lon = 77.593818;
-    let end_lat = 12.975;
-    let end_lon = 77.605;
+    // Example: Broadway HSR 27th Main to McDonald's HSR Layout
+    let start_lat = 12.923782;
+    let start_lon = 77.651635;
+    let end_lat = 12.912297;
+    let end_lon = 77.638196;
 
-    println!("📍 Start: Cubbon Park Area ({}, {})", start_lat, start_lon);
-    println!("📍 End:   MG Road Area ({}, {})\n", end_lat, end_lon);
+    println!(
+        "📍 Start: Broadway HSR 27th Main ({}, {})",
+        start_lat, start_lon
+    );
+    println!(
+        "📍 End:   McDonald's HSR Layout ({}, {})\n",
+        end_lat, end_lon
+    );
 
     // Find closest nodes in the graph
     let start_idx = match network.find_closest_node(start_lat, start_lon) {
@@ -129,6 +135,19 @@ fn main() {
                     );
                 }
             }
+
+            // Generate GeoJSON output
+            println!("\n📍 GeoJSON Output:");
+            println!("═══════════════════════════════════════════════════════════");
+            match network.path_to_geojson(&path, cost) {
+                Ok(geojson) => {
+                    println!("{}", geojson);
+                }
+                Err(e) => {
+                    eprintln!("⚠️  Failed to generate GeoJSON: {}", e);
+                }
+            }
+            println!("═══════════════════════════════════════════════════════════");
 
             println!("\n💡 Ready for API integration!");
             println!("   → Export as GeoJSON LineString");

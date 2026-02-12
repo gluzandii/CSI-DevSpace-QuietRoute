@@ -18,6 +18,9 @@ petgraph = "0.8"
 # For calculating physical distances (Haversine formula)
 geoutils = "0.5"
 rayon = "1.11"
+# For GeoJSON output
+geojson = "0.24"
+serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3"

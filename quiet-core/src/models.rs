@@ -138,4 +138,90 @@ impl RoadNetwork {
             .copied()
             .collect()
     }
+
+    /// Converts a routing path to GeoJSON LineString format.
+    ///
+    /// Creates a GeoJSON LineString feature representing the route, ready for
+    /// map visualization or API responses. GeoJSON coordinates use [lon, lat] order.
+    ///
+    /// # Arguments
+    /// * `path` - Sequence of node indices from start to destination
+    /// * `safety_cost` - The safety-weighted cost from the routing algorithm
+    ///
+    /// # Returns
+    /// GeoJSON string representing the route as a LineString
+    ///
+    /// # Example Output
+    /// ```json
+    /// {
+    ///   "type": "Feature",
+    ///   "geometry": {
+    ///     "type": "LineString",
+    ///     "coordinates": [[77.593, 12.976], [77.594, 12.975], ...]
+    ///   },
+    ///   "properties": {
+    ///     "waypoints": 84,
+    ///     "safety_cost": 1508.42,
+    ///     "distance_meters": 1453.23,
+    ///     "distance_km": 1.45
+    ///   }
+    /// }
+    /// ```
+    pub fn path_to_geojson(
+        &self,
+        path: &[NodeIndex],
+        safety_cost: f64,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        use geojson::{Feature, Geometry, Value};
+        use serde_json::json;
+
+        // Convert path to coordinates
+        let coords = self.path_to_coords(path);
+
+        // Calculate actual distance by summing edge lengths
+        let mut total_distance = 0.0;
+        for i in 0..path.len() - 1 {
+            if let Some(edge) = self.graph.find_edge(path[i], path[i + 1]) {
+                if let Some(edge_weight) = self.graph.edge_weight(edge) {
+                    total_distance += edge_weight.distance_meters;
+                }
+            }
+        }
+
+        // GeoJSON uses [lon, lat] order (opposite of typical lat, lon)
+        let positions: Vec<Vec<f64>> = coords
+            .iter()
+            .map(|coord| vec![coord.lon, coord.lat])
+            .collect();
+
+        // Create LineString geometry
+        let geometry = Geometry::new(Value::LineString(positions));
+
+        // Create Feature with properties
+        let mut feature = Feature {
+            bbox: None,
+            geometry: Some(geometry),
+            id: None,
+            properties: None,
+            foreign_members: None,
+        };
+
+        // Add properties
+        feature.properties = Some(
+            json!({
+                "waypoints": coords.len(),
+                "route_type": "safe_pedestrian",
+                "safety_cost": format!("{:.2}", safety_cost),
+                "distance_meters": format!("{:.2}", total_distance),
+                "distance_km": format!("{:.2}", total_distance / 1000.0),
+                "cost_distance_ratio": format!("{:.2}", safety_cost / total_distance.max(1.0))
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        );
+
+        // Serialize to JSON string
+        Ok(serde_json::to_string_pretty(&feature)?)
+    }
 }
