@@ -26,16 +26,6 @@ fn is_walkable(tag: &str) -> bool {
     )
 }
 
-fn haversine_dist(c1: &Coord, c2: &Coord) -> f64 {
-    let r = 6371000.0;
-    let dlat = (c2.lat - c1.lat).to_radians();
-    let dlon = (c2.lon - c1.lon).to_radians();
-    let a = (dlat / 2.0).sin().powi(2)
-        + c1.lat.to_radians().cos() * c2.lat.to_radians().cos() * (dlon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-    r * c
-}
-
 pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
     let file_path = file_path.as_ref();
     tracing::debug!("Loading map from: {}", file_path.display());
@@ -114,7 +104,12 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
                                 });
 
                                 // Calculate Distance (Cost)
-                                let dist = haversine_dist(start_coord, end_coord);
+                                let dist = utils::geo::haversine_distance(
+                                    start_coord.lat,
+                                    start_coord.lon,
+                                    end_coord.lat,
+                                    end_coord.lon,
+                                );
 
                                 // Create the Edge with Default Safety (We will update this later)
                                 let edge_data = Edge {
@@ -206,14 +201,14 @@ mod tests {
         let coord1 = Coord { lat: 0.0, lon: 0.0 };
         let coord2 = Coord { lat: 0.0, lon: 0.0 };
 
-        let dist = haversine_dist(&coord1, &coord2);
+        let dist = utils::geo::haversine_distance(coord1.lat, coord1.lon, coord2.lat, coord2.lon);
         assert_eq!(dist, 0.0, "Distance between same point should be 0");
 
         // Test with actual coordinates (approximately 1 degree apart)
         let coord3 = Coord { lat: 0.0, lon: 0.0 };
         let coord4 = Coord { lat: 1.0, lon: 0.0 };
 
-        let dist2 = haversine_dist(&coord3, &coord4);
+        let dist2 = utils::geo::haversine_distance(coord3.lat, coord3.lon, coord4.lat, coord4.lon);
         assert!(
             dist2 > 110000.0 && dist2 < 112000.0,
             "Distance should be approximately 111km for 1 degree latitude"

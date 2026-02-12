@@ -5,7 +5,8 @@ use std::path::Path;
 
 // We use a KD-Tree to store points.
 // Type: <DistanceType, ObjectData, PointArray>
-type PointTree = KdTree<f64, (), [f64; 2]>;
+// We store the coordinates as data so we can retrieve them
+type PointTree = KdTree<f64, [f64; 2], [f64; 2]>;
 
 type KMapFile<P> = (P, bool); // (FilePath, IsPoliceStation)
 
@@ -33,9 +34,9 @@ impl SafetyLayer {
         for (coords, is_police) in all_coords {
             for point in coords {
                 if is_police {
-                    police.add(point, ())?;
+                    police.add(point, point)?;
                 } else {
-                    lights.add(point, ())?;
+                    lights.add(point, point)?;
                 }
             }
         }
@@ -48,35 +49,46 @@ impl SafetyLayer {
         let point = [lat, lon];
         let mut score: f64 = 0.5; // Base score (Neutral)
 
-        // 1. Check Streetlights with graduated scoring based on distance
-        // Multiple distance tiers for more nuanced scoring
+        // 1. Check Streetlights with graduated scoring based on ACTUAL distance in meters
         if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {
-            if let Some((dist, _)) = nearest.first() {
-                if *dist < 0.00002 {
-                    // < 500m: Excellent lighting
-                    score += 0.3;
-                } else if *dist < 0.00008 {
-                    // 500m-1km: Good lighting
-                    score += 0.2;
-                } else if *dist < 0.00018 {
-                    // 1km-1.5km: Moderate lighting
-                    score += 0.1;
+            if let Some((_, nearest_coords)) = nearest.first() {
+                let dist_meters =
+                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
+
+                if dist_meters < 150.0 {
+                    // < 150m: Excellent lighting (very close)
+                    score += 0.35;
+                } else if dist_meters < 300.0 {
+                    // 150-300m: Good lighting
+                    score += 0.25;
+                } else if dist_meters < 500.0 {
+                    // 300-500m: Moderate lighting
+                    score += 0.15;
+                } else if dist_meters < 800.0 {
+                    // 500-800m: Weak lighting effect
+                    score += 0.05;
                 }
             }
         }
 
-        // 2. Check Police Stations with graduated scoring
+        // 2. Check Police Stations with graduated scoring based on ACTUAL distance in meters
         if let Ok(nearest) = self.police.nearest(&point, 1, &squared_euclidean) {
-            if let Some((dist, _)) = nearest.first() {
-                if *dist < 0.00008 {
-                    // < 1km: Very safe
+            if let Some((_, nearest_coords)) = nearest.first() {
+                let dist_meters =
+                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
+
+                if dist_meters < 500.0 {
+                    // < 500m: Very safe (walking distance)
                     score += 0.25;
-                } else if *dist < 0.00032 {
-                    // 1km-2km: Safe
+                } else if dist_meters < 1000.0 {
+                    // 500m-1km: Safe
                     score += 0.15;
-                } else if *dist < 0.00072 {
-                    // 2km-3km: Moderately safe
-                    score += 0.05;
+                } else if dist_meters < 2000.0 {
+                    // 1-2km: Moderately safe
+                    score += 0.08;
+                } else if dist_meters < 3000.0 {
+                    // 2-3km: Slight safety boost
+                    score += 0.03;
                 }
             }
         }
@@ -96,13 +108,13 @@ mod tests {
         let mut police = KdTree::new(2);
 
         // Add a streetlight at coordinates (12.9, 77.5) - Bangalore area
-        lights.add([12.9, 77.5], ()).unwrap();
+        lights.add([12.9, 77.5], [12.9, 77.5]).unwrap();
 
         // Add a second light nearby
-        lights.add([12.901, 77.501], ()).unwrap();
+        lights.add([12.901, 77.501], [12.901, 77.501]).unwrap();
 
         // Add a police station at (12.95, 77.55)
-        police.add([12.95, 77.55], ()).unwrap();
+        police.add([12.95, 77.55], [12.95, 77.55]).unwrap();
 
         SafetyLayer { lights, police }
     }
@@ -134,22 +146,46 @@ mod tests {
     }
 
     #[test]
+    fn test_haversine_distance() {
+        // Test same point
+        let dist = utils::geo::haversine_distance(12.9, 77.5, 12.9, 77.5);
+        assert!(dist.abs() < 0.1, "Same point should have nearly 0 distance");
+
+        // Test known distance: ~111km for 1 degree latitude
+        let dist_lat = utils::geo::haversine_distance(0.0, 0.0, 1.0, 0.0);
+        assert!(
+            dist_lat > 110000.0 && dist_lat < 112000.0,
+            "1 degree latitude should be ~111km, got: {}",
+            dist_lat
+        );
+
+        // Test realistic Bangalore distance
+        // From Cubbon Park to Electronic City (approximately 20km)
+        let dist_bangalore = utils::geo::haversine_distance(12.976, 77.593, 12.845, 77.663);
+        assert!(
+            dist_bangalore > 15000.0 && dist_bangalore < 25000.0,
+            "Distance should be approximately 20km, got: {} meters",
+            dist_bangalore
+        );
+    }
+
+    #[test]
     fn test_score_with_streetlight() {
         let safety = create_test_safety_layer();
 
         // Very close to the streetlight at (12.9, 77.5)
-        // Distance should trigger the excellent lighting bonus
-        let score = safety.get_safety_score(12.900001, 77.500001);
+        // Should be within 150m for excellent lighting bonus
+        let score = safety.get_safety_score(12.9001, 77.5001);
         assert!(
             score > 0.5,
             "Score should increase with nearby streetlight. Got: {}",
             score
         );
 
-        // The bonus should be at least 0.2 for good/excellent lighting
+        // The bonus should be significant for nearby lighting
         assert!(
-            score >= 0.7,
-            "Score with light should be >= 0.7. Got: {}",
+            score >= 0.75,
+            "Score with nearby light should be >= 0.75. Got: {}",
             score
         );
     }
@@ -159,15 +195,15 @@ mod tests {
         let safety = create_test_safety_layer();
 
         // Very close to police station at (12.95, 77.55)
-        // Distance should trigger a police bonus
-        let score = safety.get_safety_score(12.950001, 77.550001);
+        // Should be within 500m for very safe bonus
+        let score = safety.get_safety_score(12.9501, 77.5501);
         assert!(
             score > 0.5,
             "Score should increase with nearby police station. Got: {}",
             score
         );
 
-        // The bonus should be at least 0.15 for nearby police
+        // The bonus should be significant for nearby police
         assert!(
             score >= 0.65,
             "Score with police should be >= 0.65. Got: {}",
@@ -181,16 +217,16 @@ mod tests {
         let mut police = KdTree::new(2);
 
         // Place both very close together at same location
-        lights.add([12.9, 77.5], ()).unwrap();
-        police.add([12.900001, 77.500001], ()).unwrap();
+        lights.add([12.9, 77.5], [12.9, 77.5]).unwrap();
+        police.add([12.9, 77.5], [12.9, 77.5]).unwrap();
 
         let safety = SafetyLayer { lights, police };
 
-        // Should get both bonuses (excellent light + very safe police)
+        // Should get maximum bonuses (excellent light < 150m + very safe police < 500m)
         let score = safety.get_safety_score(12.9, 77.5);
         assert!(
             score >= 0.95,
-            "Score with both light and police should be >= 0.95 (0.5 + 0.3 + 0.25). Got: {}",
+            "Score with both light and police at same location should be >= 0.95 (0.5 + 0.35 + 0.25 = 1.0 capped). Got: {}",
             score
         );
     }
@@ -201,8 +237,8 @@ mod tests {
         let mut police = KdTree::new(2);
 
         // Place all at same location
-        lights.add([0.0, 0.0], ()).unwrap();
-        police.add([0.0, 0.0], ()).unwrap();
+        lights.add([0.0, 0.0], [0.0, 0.0]).unwrap();
+        police.add([0.0, 0.0], [0.0, 0.0]).unwrap();
 
         let safety = SafetyLayer { lights, police };
 
@@ -243,16 +279,16 @@ mod tests {
         let mut lights = KdTree::new(2);
         let police = KdTree::new(2);
 
-        // Add multiple lights
-        lights.add([0.0, 0.0], ()).unwrap();
-        lights.add([0.1, 0.1], ()).unwrap();
-        lights.add([0.2, 0.2], ()).unwrap();
+        // Add multiple lights at different locations
+        lights.add([12.9, 77.5], [12.9, 77.5]).unwrap();
+        lights.add([12.91, 77.51], [12.91, 77.51]).unwrap();
+        lights.add([12.92, 77.52], [12.92, 77.52]).unwrap();
 
         let safety = SafetyLayer { lights, police };
 
-        // Should detect the nearest one
-        let score_near_first = safety.get_safety_score(0.000001, 0.000001);
-        let score_near_third = safety.get_safety_score(0.200001, 0.200001);
+        // Should detect the nearest one to each query point
+        let score_near_first = safety.get_safety_score(12.9001, 77.5001);
+        let score_near_third = safety.get_safety_score(12.9201, 77.5201);
 
         assert!(score_near_first > 0.5, "Should detect nearby light");
         assert!(score_near_third > 0.5, "Should detect nearby light");
@@ -263,13 +299,13 @@ mod tests {
         let mut lights = KdTree::new(2);
         let mut police = KdTree::new(2);
 
-        lights.add([0.0, 0.0], ()).unwrap();
-        police.add([0.0, 0.0], ()).unwrap();
+        lights.add([12.9, 77.5], [12.9, 77.5]).unwrap();
+        police.add([12.9, 77.5], [12.9, 77.5]).unwrap();
 
         let safety = SafetyLayer { lights, police };
 
-        // Far outside the detection radius
-        let score = safety.get_safety_score(1.0, 1.0);
+        // Far outside the detection radius (over 100km away)
+        let score = safety.get_safety_score(13.9, 78.5);
         assert_eq!(
             score, 0.5,
             "Score should be base when features are out of range. Got: {}",
@@ -298,8 +334,6 @@ mod tests {
 
     #[test]
     fn test_real_safety() {
-        println!("⏳ Loading Safety Data...");
-
         // 1. Load your actual files from the data folder
         let paths = vec![
             // Police KML files
@@ -317,8 +351,6 @@ mod tests {
 
         // Create SafetyLayer with all KML files
         let safety = SafetyLayer::new(paths).unwrap();
-
-        println!("✅ Safety Data Loaded Successfully!");
 
         // 2. Test Specific Coordinates
 
