@@ -4,7 +4,7 @@ use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, path::Path};
 
 // Import the models we created in Step 3
-use crate::models::{Coord, Edge, Node, RoadGraph};
+use crate::models::{Coord, Edge, Node, RoadGraph, RoadNetwork};
 
 // --- Helpers ---
 
@@ -26,7 +26,7 @@ fn is_walkable(tag: &str) -> bool {
     )
 }
 
-pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
+pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadNetwork> {
     let file_path = file_path.as_ref();
     tracing::debug!("Loading map from: {}", file_path.display());
 
@@ -40,12 +40,15 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
 
     // 2. Initialize Safety Layer with KML data
     let safety_paths = vec![
-        ("../data/KML (Police)/Blr_Urban_Police_station_location.kml", true),
-        ("../data/KML (Police)/Blr_Output_Location_Map.kml", true),
-        ("../data/KML (Lights)/Blr_East_Zone.kml", false),
-        ("../data/KML (Lights)/Bommanahali.kml", false),
-        ("../data/KML (Lights)/Dasarahali.kml", false),
-        ("../data/KML (Lights)/RR_Nagar.kml", false),
+        (
+            "data/KML (Police)/Blr_Urban_Police_station_location.kml",
+            true,
+        ),
+        ("data/KML (Police)/Blr_Output_Location_Map.kml", true),
+        ("data/KML (Lights)/Blr_East_Zone.kml", false),
+        ("data/KML (Lights)/Bommanahali.kml", false),
+        ("data/KML (Lights)/Dasarahali.kml", false),
+        ("data/KML (Lights)/RR_Nagar.kml", false),
     ];
     let safety_layer = crate::safety::SafetyLayer::new(safety_paths)
         .map_err(|e| anyhow::anyhow!("Failed to initialize SafetyLayer: {}", e))?;
@@ -132,7 +135,7 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
                                 let edge_data = Edge {
                                     distance_meters: dist,
                                     safety_score,
-                                    is_lit: false,     // Default: Assume dark
+                                    is_lit: false, // Default: Assume dark
                                     street_type: h_type.to_string(),
                                 };
 
@@ -151,7 +154,18 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
         graph.node_count(),
         graph.edge_count()
     );
-    Ok(graph)
+
+    // Build the node_coords lookup map (NodeIndex -> Coord)
+    let node_coords: HashMap<NodeIndex, Coord> = graph
+        .node_indices()
+        .map(|idx| (idx, graph[idx].coord))
+        .collect();
+
+    Ok(RoadNetwork {
+        graph,
+        node_coords,
+        osm_to_node: node_indices,
+    })
 }
 
 #[cfg(test)]
@@ -175,14 +189,14 @@ mod tests {
         let result = parse_osm(temp_file.path());
         // Empty file should either error or return empty graph
         match result {
-            Ok(graph) => {
+            Ok(network) => {
                 assert_eq!(
-                    graph.node_count(),
+                    network.graph.node_count(),
                     0,
                     "Empty file should produce empty graph"
                 );
                 assert_eq!(
-                    graph.edge_count(),
+                    network.graph.edge_count(),
                     0,
                     "Empty file should produce empty graph"
                 );
@@ -197,18 +211,29 @@ mod tests {
     fn test_parse_osm_with_real_file() {
         // This test requires an actual OSM PBF file
         // If the file exists in the workspace, test it
-        let test_file = "../data/OSM (Open Map Data)/bengaluru.osm.pbf";
+        let test_file = "data/OSM (Open Map Data)/bengaluru.osm.pbf";
 
         if std::path::Path::new(test_file).exists() {
             let result = parse_osm(test_file);
             assert!(result.is_ok(), "Should successfully parse valid OSM file");
 
-            let graph = result.unwrap();
-            assert!(graph.node_count() > 0, "Graph should contain nodes");
-            assert!(graph.edge_count() > 0, "Graph should contain edges");
+            let network = result.unwrap();
+            assert!(network.graph.node_count() > 0, "Graph should contain nodes");
+            assert!(network.graph.edge_count() > 0, "Graph should contain edges");
 
             // Verify graph is undirected
-            assert!(!graph.is_directed(), "Graph should be undirected");
+            assert!(!network.graph.is_directed(), "Graph should be undirected");
+
+            // Verify lookup maps are populated
+            assert_eq!(
+                network.node_coords.len(),
+                network.graph.node_count(),
+                "node_coords should have entry for each graph node"
+            );
+            assert!(
+                network.osm_to_node.len() > 0,
+                "osm_to_node should be populated"
+            );
         }
     }
 
@@ -249,12 +274,14 @@ mod tests {
 
     #[test]
     fn test_parse_osm_graph_properties() {
-        let test_file = "../data/OSM (Open Map Data)/bengaluru.osm.pbf";
+        let test_file = "data/OSM (Open Map Data)/bengaluru.osm.pbf";
 
         if std::path::Path::new(test_file).exists() {
             let result = parse_osm(test_file);
 
-            if let Ok(graph) = result {
+            if let Ok(network) = result {
+                let graph = &network.graph;
+
                 // Verify all edges have positive distances
                 for edge in graph.edge_indices() {
                     if let Some(edge_weight) = graph.edge_weight(edge) {
@@ -282,6 +309,12 @@ mod tests {
                             "Longitude should be in valid range"
                         );
                     }
+
+                    // Verify node_coords lookup works
+                    assert!(
+                        network.node_coords.contains_key(&node),
+                        "node_coords should contain all graph nodes"
+                    );
                 }
             }
         }
