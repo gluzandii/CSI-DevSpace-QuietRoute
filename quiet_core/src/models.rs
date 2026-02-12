@@ -20,8 +20,8 @@ pub struct Node {
 #[derive(Debug, Clone)]
 pub struct Edge {
     pub distance_meters: f64,
-    pub safety_score: f64, // 0.0 (Dangerous) to 1.0 (Safe)
-    pub is_lit: bool,      // From your Light Data
+    pub safety_score: f64,   // 0.0 (Dangerous) to 1.0 (Safe)
+    pub is_lit: bool,        // From your Light Data
     pub street_type: String, // "residential", "primary", etc.
 }
 

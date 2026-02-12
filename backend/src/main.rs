@@ -1,9 +1,9 @@
 use anyhow::Result;
-use osmpbf::{ElementReader, Element};
+use osmpbf::{Element, ElementReader};
 
 fn main() -> Result<()> {
     // 1. Tell Rust where the map file is
-    let map_path = "/Users/sushi/Dev/Rust/quiet-route/data/OSM (Open Map Data)/planet_77.356,12.789_77.955,13.168.osm.pbf"; 
+    let map_path = "/Users/sushi/Dev/Rust/quiet-route/data/OSM (Open Map Data)/planet_77.356,12.789_77.955,13.168.osm.pbf";
 
     println!("🗺️  Reading map data from: {}", map_path);
     println!("---------------------------------------");
