@@ -1,0 +1,13 @@
+[package]
+name = "quiet_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+# For reading the raw map files (High performance)
+osmpbf = "0.3"
+# For the math/routing logic (Dijkstra/A*)
+petgraph = "0.8"
+# For calculating physical distances (Haversine formula)
+geoutils = "0.5"
