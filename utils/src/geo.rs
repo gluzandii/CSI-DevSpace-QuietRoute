@@ -1,25 +1,25 @@
 /// Calculates the Haversine distance between two points in meters
-/// 
+///
 /// # Arguments
 /// * `lat1` - Latitude of first point in degrees
 /// * `lon1` - Longitude of first point in degrees
 /// * `lat2` - Latitude of second point in degrees
 /// * `lon2` - Longitude of second point in degrees
-/// 
+///
 /// # Returns
 /// Distance in meters
 pub fn haversine_distance(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     const EARTH_RADIUS_METERS: f64 = 6371000.0;
-    
+
     let dlat = (lat2 - lat1).to_radians();
     let dlon = (lon2 - lon1).to_radians();
     let lat1_rad = lat1.to_radians();
     let lat2_rad = lat2.to_radians();
 
-    let a = (dlat / 2.0).sin().powi(2)
-        + lat1_rad.cos() * lat2_rad.cos() * (dlon / 2.0).sin().powi(2);
+    let a =
+        (dlat / 2.0).sin().powi(2) + lat1_rad.cos() * lat2_rad.cos() * (dlon / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-    
+
     EARTH_RADIUS_METERS * c
 }
 
