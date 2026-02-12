@@ -8,6 +8,8 @@ serde.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+utils.workspace = true
+kdtree.workspace = true
 
 # For reading the raw map files (High performance)
 osmpbf = "0.3"
@@ -16,6 +18,3 @@ petgraph = "0.8"
 # For calculating physical distances (Haversine formula)
 geoutils = "0.5"
 rayon = "1.11"
-
-kdtree = "0.8"     # The spatial index (Fast lookups)
-quick-xml = "0.39" # To read KML files

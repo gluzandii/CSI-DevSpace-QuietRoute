@@ -1,5 +1,5 @@
 [workspace]
-members = ["backend", "quiet-core"]
+members = ["backend", "quiet-core", "utils"]
 resolver = "3"
 
 
@@ -9,3 +9,5 @@ serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 quiet-core = { path = "quiet-core" }
+utils = { path = "utils" }
+kdtree = "0.8"                                                             # The spatial index (Fast lookups)

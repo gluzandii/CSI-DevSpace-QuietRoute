@@ -1,11 +1,6 @@
 use anyhow::Result;
-use kdtree::KdTree;
-use kdtree::distance::squared_euclidean;
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
+use kdtree::{KdTree, distance::squared_euclidean};
 use rayon::prelude::*;
-use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 
 // We use a KD-Tree to store points.
@@ -26,7 +21,7 @@ impl SafetyLayer {
         // Parse all KML files in parallel and collect coordinates
         let results: Result<Vec<_>> = paths
             .into_par_iter()
-            .map(|(p, is_police)| Self::parse_kml_coordinates(p.as_ref(), is_police))
+            .map(|(p, is_police)| utils::kml::parse_kml_coordinates(p.as_ref(), is_police))
             .collect();
 
         let all_coords = results?;
@@ -78,52 +73,215 @@ impl SafetyLayer {
         // Cap the score at 1.0 (Perfectly Safe)
         score.min(1.0_f64)
     }
+}
 
-    /// Parses a KML file and extracts coordinates (can be called in parallel)
-    fn parse_kml_coordinates(path: &Path, is_police: bool) -> Result<(Vec<[f64; 2]>, bool)> {
-        println!("🔦 Loading safety data from: {}", path.display());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let file = File::open(path)?;
-        let file = BufReader::new(file);
-        let mut reader = Reader::from_reader(file);
-        let mut buf = Vec::new();
-        let mut coords = Vec::new();
-        let mut in_coord = false;
+    /// Helper to create a SafetyLayer with predefined test data
+    fn create_test_safety_layer() -> SafetyLayer {
+        let mut lights = KdTree::new(2);
+        let mut police = KdTree::new(2);
 
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(e)) => {
-                    if e.name().as_ref() == b"coordinates" {
-                        in_coord = true;
-                    }
-                }
-                Ok(Event::Text(e)) => {
-                    if in_coord {
-                        let text = String::from_utf8_lossy(e.as_ref());
-                        // KML coordinates format: "lon,lat,alt" (Example: "77.5,12.9,0.0")
-                        let parts: Vec<&str> = text.trim().split(',').collect();
+        // Add a streetlight at coordinates (12.9, 77.5) - Bangalore area
+        lights.add([12.9, 77.5], ()).unwrap();
 
-                        if parts.len() >= 2 {
-                            // Note: KML is usually Lon, Lat. We want Lat, Lon for our tree.
-                            let lon = parts[0].parse::<f64>().unwrap_or(0.0);
-                            let lat = parts[1].parse::<f64>().unwrap_or(0.0);
+        // Add a second light nearby
+        lights.add([12.901, 77.501], ()).unwrap();
 
-                            if lat != 0.0 && lon != 0.0 {
-                                coords.push([lat, lon]);
-                            }
-                        }
-                    }
-                }
-                Ok(Event::End(e)) => {
-                    if e.name().as_ref() == b"coordinates" {
-                        in_coord = false;
-                    }
-                }
-                Ok(Event::Eof) => break,
-                _ => (),
+        // Add a police station at (12.95, 77.55)
+        police.add([12.95, 77.55], ()).unwrap();
+
+        SafetyLayer { lights, police }
+    }
+
+    #[test]
+    fn test_empty_safety_layer() {
+        // Test with no KML files (empty paths)
+        let result = SafetyLayer::new(vec![] as Vec<(&str, bool)>);
+        assert!(
+            result.is_ok(),
+            "Should successfully create SafetyLayer with empty paths"
+        );
+
+        let safety = result.unwrap();
+        let score = safety.get_safety_score(12.9, 77.5);
+        assert_eq!(score, 0.5, "Empty layer should return base neutral score");
+    }
+
+    #[test]
+    fn test_base_score() {
+        let safety = create_test_safety_layer();
+
+        // Far away from any lights or police stations
+        let score = safety.get_safety_score(20.0, 80.0);
+        assert_eq!(
+            score, 0.5,
+            "Base score should be 0.5 when no features detected"
+        );
+    }
+
+    #[test]
+    fn test_score_with_streetlight() {
+        let safety = create_test_safety_layer();
+
+        // Very close to the streetlight at (12.9, 77.5)
+        // Distance should be < 0.00000025 (roughly 50m squared in degrees)
+        let score = safety.get_safety_score(12.900001, 77.500001);
+        assert!(
+            score > 0.5,
+            "Score should increase with nearby streetlight. Got: {}",
+            score
+        );
+
+        // The bonus should be 0.3 for the light
+        assert!(
+            score >= 0.8,
+            "Score with light should be ~0.8 (0.5 + 0.3). Got: {}",
+            score
+        );
+    }
+
+    #[test]
+    fn test_score_with_police_station() {
+        let safety = create_test_safety_layer();
+
+        // Very close to police station at (12.95, 77.55)
+        // Distance should be < 0.000004 (roughly 200m squared in degrees)
+        let score = safety.get_safety_score(12.950001, 77.550001);
+        assert!(
+            score > 0.5,
+            "Score should increase with nearby police station. Got: {}",
+            score
+        );
+
+        // The bonus should be 0.2 for police
+        assert!(
+            score >= 0.7,
+            "Score with police should be ~0.7 (0.5 + 0.2). Got: {}",
+            score
+        );
+    }
+
+    #[test]
+    fn test_combined_bonuses() {
+        let mut lights = KdTree::new(2);
+        let mut police = KdTree::new(2);
+
+        // Place both very close together at same location
+        lights.add([12.9, 77.5], ()).unwrap();
+        police.add([12.900001, 77.500001], ()).unwrap();
+
+        let safety = SafetyLayer { lights, police };
+
+        // Should get both bonuses
+        let score = safety.get_safety_score(12.9, 77.5);
+        assert!(
+            score >= 0.95,
+            "Score with both light and police should be ~1.0 (0.5 + 0.3 + 0.2). Got: {}",
+            score
+        );
+    }
+
+    #[test]
+    fn test_score_capped_at_one() {
+        let mut lights = KdTree::new(2);
+        let mut police = KdTree::new(2);
+
+        // Place all at same location
+        lights.add([0.0, 0.0], ()).unwrap();
+        police.add([0.0, 0.0], ()).unwrap();
+
+        let safety = SafetyLayer { lights, police };
+
+        let score = safety.get_safety_score(0.0, 0.0);
+        assert_eq!(
+            score, 1.0,
+            "Score should be capped at 1.0 (Perfect safety). Got: {}",
+            score
+        );
+        assert!(
+            score <= 1.0,
+            "Score should never exceed 1.0. Got: {}",
+            score
+        );
+    }
+
+    #[test]
+    fn test_score_never_below_base() {
+        let safety = create_test_safety_layer();
+
+        // Any location should score at least 0.5 (base score)
+        for lat in 0..20 {
+            for lon in 70..80 {
+                let score = safety.get_safety_score(lat as f64, lon as f64);
+                assert!(
+                    score >= 0.5,
+                    "Score should never be below base 0.5. Got: {} at ({}, {})",
+                    score,
+                    lat,
+                    lon
+                );
             }
-            buf.clear();
         }
-        Ok((coords, is_police))
+    }
+
+    #[test]
+    fn test_multiple_lights_detection() {
+        let mut lights = KdTree::new(2);
+        let police = KdTree::new(2);
+
+        // Add multiple lights
+        lights.add([0.0, 0.0], ()).unwrap();
+        lights.add([0.1, 0.1], ()).unwrap();
+        lights.add([0.2, 0.2], ()).unwrap();
+
+        let safety = SafetyLayer { lights, police };
+
+        // Should detect the nearest one
+        let score_near_first = safety.get_safety_score(0.000001, 0.000001);
+        let score_near_third = safety.get_safety_score(0.200001, 0.200001);
+
+        assert!(score_near_first > 0.5, "Should detect nearby light");
+        assert!(score_near_third > 0.5, "Should detect nearby light");
+    }
+
+    #[test]
+    fn test_out_of_range_no_bonus() {
+        let mut lights = KdTree::new(2);
+        let mut police = KdTree::new(2);
+
+        lights.add([0.0, 0.0], ()).unwrap();
+        police.add([0.0, 0.0], ()).unwrap();
+
+        let safety = SafetyLayer { lights, police };
+
+        // Far outside the detection radius
+        let score = safety.get_safety_score(1.0, 1.0);
+        assert_eq!(
+            score, 0.5,
+            "Score should be base when features are out of range. Got: {}",
+            score
+        );
+    }
+
+    #[test]
+    fn test_score_bounds() {
+        let safety = create_test_safety_layer();
+
+        // Test that score is always between 0.0 and 1.0
+        for lat in -90..90 {
+            for lon in -180..180 {
+                let score = safety.get_safety_score(lat as f64, lon as f64);
+                assert!(
+                    score >= 0.0 && score <= 1.0,
+                    "Score {} at ({}, {}) is out of bounds [0.0, 1.0]",
+                    score,
+                    lat,
+                    lon
+                );
+            }
+        }
     }
 }
