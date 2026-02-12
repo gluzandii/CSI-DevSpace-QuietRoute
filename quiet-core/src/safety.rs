@@ -108,15 +108,15 @@ mod tests {
         let paths = vec![
             // Police KML files
             (
-                "../data/KML (Police)/Blr_Urban_Police_station_location.kml",
+                "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Urban_Police_station_location.kml",
                 true,
             ),
-            ("../data/KML (Police)/Blr_Output_Location_Map.kml", true),
+            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Output_Location_Map.kml", true),
             // Light KML files
-            ("../data/KML (Lights)/Blr_East_Zone.kml", false),
-            ("../data/KML (Lights)/Bommanahali.kml", false),
-            ("../data/KML (Lights)/Dasarahali.kml", false),
-            ("../data/KML (Lights)/RR_Nagar.kml", false),
+            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Blr_East_Zone.kml", false),
+            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Bommanahali.kml", false),
+            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Dasarahali.kml", false),
+            ("/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/RR_Nagar.kml", false),
         ];
 
         // Create SafetyLayer with all KML files

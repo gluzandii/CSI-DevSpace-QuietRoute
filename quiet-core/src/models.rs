@@ -48,7 +48,7 @@ impl RoadNetwork {
     /// # Example API Flow:
     /// ```ignore
     /// // 1. Load the network once at startup
-    /// let network = parse_osm("data/bengaluru.osm.pbf")?;
+    /// let network = parse_osm("/Users/sushi/Dev/Rust/quiet-route/data/OSM (Open Map Data)/bengaluru.osm.pbf")?;
     ///
     /// // 2. User requests route from (12.93, 77.61) to (12.95, 77.63)
     /// let start = network.find_closest_node(12.93, 77.61)?;

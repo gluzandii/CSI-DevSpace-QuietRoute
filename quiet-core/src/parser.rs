@@ -41,14 +41,29 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadNetwork> {
     // 2. Initialize Safety Layer with KML data
     let safety_paths = vec![
         (
-            "data/KML (Police)/Blr_Urban_Police_station_location.kml",
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Urban_Police_station_location.kml",
             true,
         ),
-        ("data/KML (Police)/Blr_Output_Location_Map.kml", true),
-        ("data/KML (Lights)/Blr_East_Zone.kml", false),
-        ("data/KML (Lights)/Bommanahali.kml", false),
-        ("data/KML (Lights)/Dasarahali.kml", false),
-        ("data/KML (Lights)/RR_Nagar.kml", false),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Output_Location_Map.kml",
+            true,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Blr_East_Zone.kml",
+            false,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Bommanahali.kml",
+            false,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Dasarahali.kml",
+            false,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/RR_Nagar.kml",
+            false,
+        ),
     ];
     let safety_layer = crate::safety::SafetyLayer::new(safety_paths)
         .map_err(|e| anyhow::anyhow!("Failed to initialize SafetyLayer: {}", e))?;
@@ -210,31 +225,35 @@ mod tests {
     #[test]
     fn test_parse_osm_with_real_file() {
         // This test requires an actual OSM PBF file
-        // If the file exists in the workspace, test it
-        let test_file = "data/OSM (Open Map Data)/bengaluru.osm.pbf";
+        let test_file =
+            "/Users/sushi/Dev/Rust/quiet-route/data/OSM (Open Map Data)/bengaluru.osm.pbf";
 
-        if std::path::Path::new(test_file).exists() {
-            let result = parse_osm(test_file);
-            assert!(result.is_ok(), "Should successfully parse valid OSM file");
+        assert!(
+            std::path::Path::new(test_file).exists(),
+            "Test file must exist at: {}",
+            test_file
+        );
 
-            let network = result.unwrap();
-            assert!(network.graph.node_count() > 0, "Graph should contain nodes");
-            assert!(network.graph.edge_count() > 0, "Graph should contain edges");
+        let result = parse_osm(test_file);
+        assert!(result.is_ok(), "Should successfully parse valid OSM file");
 
-            // Verify graph is undirected
-            assert!(!network.graph.is_directed(), "Graph should be undirected");
+        let network = result.unwrap();
+        assert!(network.graph.node_count() > 0, "Graph should contain nodes");
+        assert!(network.graph.edge_count() > 0, "Graph should contain edges");
 
-            // Verify lookup maps are populated
-            assert_eq!(
-                network.node_coords.len(),
-                network.graph.node_count(),
-                "node_coords should have entry for each graph node"
-            );
-            assert!(
-                network.osm_to_node.len() > 0,
-                "osm_to_node should be populated"
-            );
-        }
+        // Verify graph is undirected
+        assert!(!network.graph.is_directed(), "Graph should be undirected");
+
+        // Verify lookup maps are populated
+        assert_eq!(
+            network.node_coords.len(),
+            network.graph.node_count(),
+            "node_coords should have entry for each graph node"
+        );
+        assert!(
+            network.osm_to_node.len() > 0,
+            "osm_to_node should be populated"
+        );
     }
 
     #[test]
@@ -274,48 +293,54 @@ mod tests {
 
     #[test]
     fn test_parse_osm_graph_properties() {
-        let test_file = "data/OSM (Open Map Data)/bengaluru.osm.pbf";
+        let test_file =
+            "/Users/sushi/Dev/Rust/quiet-route/data/OSM (Open Map Data)/bengaluru.osm.pbf";
 
-        if std::path::Path::new(test_file).exists() {
-            let result = parse_osm(test_file);
+        assert!(
+            std::path::Path::new(test_file).exists(),
+            "Test file must exist at: {}",
+            test_file
+        );
 
-            if let Ok(network) = result {
-                let graph = &network.graph;
+        let result = parse_osm(test_file);
+        assert!(result.is_ok(), "Should successfully parse OSM file");
 
-                // Verify all edges have positive distances
-                for edge in graph.edge_indices() {
-                    if let Some(edge_weight) = graph.edge_weight(edge) {
-                        assert!(
-                            edge_weight.distance_meters >= 0.0,
-                            "Edge distance should be non-negative"
-                        );
-                        assert!(
-                            edge_weight.safety_score >= 0.0 && edge_weight.safety_score <= 1.0,
-                            "Safety score should be between 0.0 and 1.0"
-                        );
-                        assert!(!edge_weight.is_lit, "Default is_lit should be false");
-                    }
-                }
+        if let Ok(network) = result {
+            let graph = &network.graph;
 
-                // Verify all nodes have valid coordinates
-                for node in graph.node_indices() {
-                    if let Some(node_weight) = graph.node_weight(node) {
-                        assert!(
-                            node_weight.coord.lat >= -90.0 && node_weight.coord.lat <= 90.0,
-                            "Latitude should be in valid range"
-                        );
-                        assert!(
-                            node_weight.coord.lon >= -180.0 && node_weight.coord.lon <= 180.0,
-                            "Longitude should be in valid range"
-                        );
-                    }
-
-                    // Verify node_coords lookup works
+            // Verify all edges have positive distances
+            for edge in graph.edge_indices() {
+                if let Some(edge_weight) = graph.edge_weight(edge) {
                     assert!(
-                        network.node_coords.contains_key(&node),
-                        "node_coords should contain all graph nodes"
+                        edge_weight.distance_meters >= 0.0,
+                        "Edge distance should be non-negative"
+                    );
+                    assert!(
+                        edge_weight.safety_score >= 0.0 && edge_weight.safety_score <= 1.0,
+                        "Safety score should be between 0.0 and 1.0"
+                    );
+                    assert!(!edge_weight.is_lit, "Default is_lit should be false");
+                }
+            }
+
+            // Verify all nodes have valid coordinates
+            for node in graph.node_indices() {
+                if let Some(node_weight) = graph.node_weight(node) {
+                    assert!(
+                        node_weight.coord.lat >= -90.0 && node_weight.coord.lat <= 90.0,
+                        "Latitude should be in valid range"
+                    );
+                    assert!(
+                        node_weight.coord.lon >= -180.0 && node_weight.coord.lon <= 180.0,
+                        "Longitude should be in valid range"
                     );
                 }
+
+                // Verify node_coords lookup works
+                assert!(
+                    network.node_coords.contains_key(&node),
+                    "node_coords should contain all graph nodes"
+                );
             }
         }
     }
