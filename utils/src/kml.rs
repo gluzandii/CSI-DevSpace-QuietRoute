@@ -4,7 +4,7 @@ use std::{fs::File, io::BufReader, path::Path};
 
 /// Parses a KML file and extracts coordinates (can be called in parallel)
 pub fn parse_kml_coordinates(path: &Path, is_police: bool) -> Result<(Vec<[f64; 2]>, bool)> {
-    println!("🔦 Loading safety data from: {}", path.display());
+    tracing::debug!("Loading safety data from: {}", path.display());
 
     let file = File::open(path)?;
     let file = BufReader::new(file);

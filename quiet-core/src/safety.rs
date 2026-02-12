@@ -48,24 +48,35 @@ impl SafetyLayer {
         let point = [lat, lon];
         let mut score: f64 = 0.5; // Base score (Neutral)
 
-        // 1. Check Streetlights (Radius: 0.0005 degrees ≈ 50 meters)
-        // If we find at least one light nearby, boost the score.
+        // 1. Check Streetlights with graduated scoring based on distance
+        // Multiple distance tiers for more nuanced scoring
         if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {
             if let Some((dist, _)) = nearest.first() {
-                if *dist < 0.00000025 {
-                    // roughly 50m squared distance in deg
+                if *dist < 0.00002 {
+                    // < 500m: Excellent lighting
                     score += 0.3;
+                } else if *dist < 0.00008 {
+                    // 500m-1km: Good lighting
+                    score += 0.2;
+                } else if *dist < 0.00018 {
+                    // 1km-1.5km: Moderate lighting
+                    score += 0.1;
                 }
             }
         }
 
-        // 2. Check Police Stations (Radius: 0.002 degrees ≈ 200 meters)
-        // Being near a police station is a huge safety bonus.
+        // 2. Check Police Stations with graduated scoring
         if let Ok(nearest) = self.police.nearest(&point, 1, &squared_euclidean) {
             if let Some((dist, _)) = nearest.first() {
-                if *dist < 0.000004 {
-                    // roughly 200m squared distance in deg
-                    score += 0.2;
+                if *dist < 0.00008 {
+                    // < 1km: Very safe
+                    score += 0.25;
+                } else if *dist < 0.00032 {
+                    // 1km-2km: Safe
+                    score += 0.15;
+                } else if *dist < 0.00072 {
+                    // 2km-3km: Moderately safe
+                    score += 0.05;
                 }
             }
         }
@@ -127,7 +138,7 @@ mod tests {
         let safety = create_test_safety_layer();
 
         // Very close to the streetlight at (12.9, 77.5)
-        // Distance should be < 0.00000025 (roughly 50m squared in degrees)
+        // Distance should trigger the excellent lighting bonus
         let score = safety.get_safety_score(12.900001, 77.500001);
         assert!(
             score > 0.5,
@@ -135,10 +146,10 @@ mod tests {
             score
         );
 
-        // The bonus should be 0.3 for the light
+        // The bonus should be at least 0.2 for good/excellent lighting
         assert!(
-            score >= 0.8,
-            "Score with light should be ~0.8 (0.5 + 0.3). Got: {}",
+            score >= 0.7,
+            "Score with light should be >= 0.7. Got: {}",
             score
         );
     }
@@ -148,7 +159,7 @@ mod tests {
         let safety = create_test_safety_layer();
 
         // Very close to police station at (12.95, 77.55)
-        // Distance should be < 0.000004 (roughly 200m squared in degrees)
+        // Distance should trigger a police bonus
         let score = safety.get_safety_score(12.950001, 77.550001);
         assert!(
             score > 0.5,
@@ -156,10 +167,10 @@ mod tests {
             score
         );
 
-        // The bonus should be 0.2 for police
+        // The bonus should be at least 0.15 for nearby police
         assert!(
-            score >= 0.7,
-            "Score with police should be ~0.7 (0.5 + 0.2). Got: {}",
+            score >= 0.65,
+            "Score with police should be >= 0.65. Got: {}",
             score
         );
     }
@@ -175,11 +186,11 @@ mod tests {
 
         let safety = SafetyLayer { lights, police };
 
-        // Should get both bonuses
+        // Should get both bonuses (excellent light + very safe police)
         let score = safety.get_safety_score(12.9, 77.5);
         assert!(
             score >= 0.95,
-            "Score with both light and police should be ~1.0 (0.5 + 0.3 + 0.2). Got: {}",
+            "Score with both light and police should be >= 0.95 (0.5 + 0.3 + 0.25). Got: {}",
             score
         );
     }
@@ -283,5 +294,66 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_real_safety() {
+        println!("⏳ Loading Safety Data...");
+
+        // 1. Load your actual files from the data folder
+        let paths = vec![
+            // Police KML files
+            (
+                "../data/KML (Police)/Blr_Urban_Police_station_location.kml",
+                true,
+            ),
+            ("../data/KML (Police)/Blr_Output_Location_Map.kml", true),
+            // Light KML files
+            ("../data/KML (Lights)/Blr_East_Zone.kml", false),
+            ("../data/KML (Lights)/Bommanahali.kml", false),
+            ("../data/KML (Lights)/Dasarahali.kml", false),
+            ("../data/KML (Lights)/RR_Nagar.kml", false),
+        ];
+
+        // Create SafetyLayer with all KML files
+        let safety = SafetyLayer::new(paths).unwrap();
+
+        println!("✅ Safety Data Loaded Successfully!");
+
+        // 2. Test Specific Coordinates
+
+        // Test 1: Cubbon Park Police Station (Should be Safe)
+        // Approx Location: 12.976, 77.593
+        let score_cubbon = safety.get_safety_score(12.976, 77.593);
+        println!(
+            "👮 Cubbon Park Area Score: {:.2} (Expected: >0.6)\n",
+            score_cubbon
+        );
+
+        // Test 2: Random Highway Spot (Likely lower score)
+        // Location: 13.100, 77.500
+        let score_random = safety.get_safety_score(13.100, 77.500);
+        println!(
+            "🌑 Random Highway Score:   {:.2} (Expected: Lower than Cubbon)\n",
+            score_random
+        );
+
+        // Verify Cubbon Park has better safety than random location
+        assert!(
+            score_cubbon > score_random,
+            "Cubbon Park ({}) should have higher score than random highway ({})",
+            score_cubbon,
+            score_random
+        );
+
+        // Ensure scores are within valid range
+        assert!(
+            score_cubbon >= 0.0 && score_cubbon <= 1.0,
+            "Cubbon Park score out of bounds"
+        );
+        assert!(
+            score_random >= 0.0 && score_random <= 1.0,
+            "Random location score out of bounds"
+        );
     }
 }

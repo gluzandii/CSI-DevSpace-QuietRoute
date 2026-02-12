@@ -962,6 +962,8 @@ dependencies = [
  "anyhow",
  "kdtree",
  "quick-xml",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

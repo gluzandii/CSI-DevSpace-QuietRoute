@@ -7,3 +7,6 @@ edition = "2024"
 kdtree.workspace = true
 quick-xml = "0.39"      # To read KML files
 anyhow.workspace = true
+
+tracing.workspace = true
+tracing-subscriber.workspace = true
