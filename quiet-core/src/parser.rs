@@ -38,9 +38,21 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
     // Maps OSM ID (i64) -> PetGraph NodeIndex (u32)
     let mut node_indices: HashMap<i64, NodeIndex> = HashMap::with_capacity(100_000);
 
+    // 2. Initialize Safety Layer with KML data
+    let safety_paths = vec![
+        ("../data/KML (Police)/Blr_Urban_Police_station_location.kml", true),
+        ("../data/KML (Police)/Blr_Output_Location_Map.kml", true),
+        ("../data/KML (Lights)/Blr_East_Zone.kml", false),
+        ("../data/KML (Lights)/Bommanahali.kml", false),
+        ("../data/KML (Lights)/Dasarahali.kml", false),
+        ("../data/KML (Lights)/RR_Nagar.kml", false),
+    ];
+    let safety_layer = crate::safety::SafetyLayer::new(safety_paths)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize SafetyLayer: {}", e))?;
+
     let reader = ElementReader::from_path(file_path)?;
 
-    // 2. Iterate through the PBF file
+    // 3. Iterate through the PBF file
     // PBF files are ordered: Nodes come first, then Ways.
     reader.for_each(|element| {
         match element {
@@ -111,10 +123,15 @@ pub fn parse_osm<P: AsRef<Path>>(file_path: P) -> Result<RoadGraph> {
                                     end_coord.lon,
                                 );
 
-                                // Create the Edge with Default Safety (We will update this later)
+                                // Calculate Safety Score using midpoint of edge
+                                let mid_lat = (start_coord.lat + end_coord.lat) / 2.0;
+                                let mid_lon = (start_coord.lon + end_coord.lon) / 2.0;
+                                let safety_score = safety_layer.get_safety_score(mid_lat, mid_lon);
+
+                                // Create the Edge with calculated Safety Score
                                 let edge_data = Edge {
                                     distance_meters: dist,
-                                    safety_score: 1.0, // Default: Assume safe
+                                    safety_score,
                                     is_lit: false,     // Default: Assume dark
                                     street_type: h_type.to_string(),
                                 };
@@ -246,8 +263,8 @@ mod tests {
                             "Edge distance should be non-negative"
                         );
                         assert!(
-                            edge_weight.safety_score == 1.0,
-                            "Default safety score should be 1.0"
+                            edge_weight.safety_score >= 0.0 && edge_weight.safety_score <= 1.0,
+                            "Safety score should be between 0.0 and 1.0"
                         );
                         assert!(!edge_weight.is_lit, "Default is_lit should be false");
                     }
