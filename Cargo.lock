@@ -29,6 +29,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "osmpbf",
+ "quiet-core",
 ]
 
 [[package]]
@@ -394,7 +395,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quiet_core"
+name = "quiet-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
