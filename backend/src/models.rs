@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Request body for the route finding API
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteRequest {
     /// Starting latitude
     pub start_lat: f64,
@@ -17,6 +18,7 @@ pub struct RouteRequest {
 
 /// Successful route response
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteResponse {
     /// GeoJSON LineString feature with route geometry and metadata
     pub geojson: serde_json::Value,

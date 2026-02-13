@@ -210,11 +210,11 @@ impl RoadNetwork {
         feature.properties = Some(
             json!({
                 "waypoints": coords.len(),
-                "route_type": "safe_pedestrian",
-                "safety_cost": format!("{:.2}", safety_cost),
-                "distance_meters": format!("{:.2}", total_distance),
-                "distance_km": format!("{:.2}", total_distance / 1000.0),
-                "cost_distance_ratio": format!("{:.2}", safety_cost / total_distance.max(1.0))
+                "routeType": "safe_pedestrian",
+                "safetyCost": format!("{:.2}", safety_cost),
+                "distanceMeters": format!("{:.2}", total_distance),
+                "distanceKm": format!("{:.2}", total_distance / 1000.0),
+                "costDistanceRatio": format!("{:.2}", safety_cost / total_distance.max(1.0))
             })
             .as_object()
             .unwrap()
