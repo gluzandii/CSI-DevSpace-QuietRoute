@@ -206,6 +206,28 @@ impl SafetyLayer {
         }
         None
     }
+
+    /// Returns the distance to the nearest police station.
+    ///
+    /// Used for route metadata to show how close the route is to police coverage.
+    ///
+    /// # Arguments
+    /// * `lat` - Latitude in decimal degrees
+    /// * `lon` - Longitude in decimal degrees
+    ///
+    /// # Returns
+    /// Distance in meters to nearest police station, or None if no police stations in tree
+    pub fn nearest_police_distance(&self, lat: f64, lon: f64) -> Option<f64> {
+        let point = [lat, lon];
+        if let Ok(nearest) = self.police.nearest(&point, 1, &squared_euclidean) {
+            if let Some((_, nearest_coords)) = nearest.first() {
+                let dist_meters =
+                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
+                return Some(dist_meters);
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]

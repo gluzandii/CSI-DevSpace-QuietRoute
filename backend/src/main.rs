@@ -31,6 +31,7 @@ mod state;
 
 use axum::{http::Method, routing::get, routing::post, Router};
 use quiet_core::parser::parse_osm;
+use quiet_core::safety::SafetyLayer;
 use state::AppState;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -189,8 +190,43 @@ async fn main() {
         }
     };
 
+    // Load the safety layer with KML data
+    let safety_paths = vec![
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Urban_Police_station_location.kml",
+            true,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Police)/Blr_Output_Location_Map.kml",
+            true,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Blr_East_Zone.kml",
+            false,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Bommanahali.kml",
+            false,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/Dasarahali.kml",
+            false,
+        ),
+        (
+            "/Users/sushi/Dev/Rust/quiet-route/data/KML (Lights)/RR_Nagar.kml",
+            false,
+        ),
+    ];
+
+    let safety_layer = match SafetyLayer::new(safety_paths) {
+        Ok(layer) => layer,
+        Err(_e) => {
+            std::process::exit(1);
+        }
+    };
+
     // Create shared application state
-    let state = AppState::new(network);
+    let state = AppState::new(network, safety_layer);
 
     // CORS (Cross-Origin Resource Sharing)
     // NOTE: `Any` is fine for local development. For production, replace with a fixed allowlist.
