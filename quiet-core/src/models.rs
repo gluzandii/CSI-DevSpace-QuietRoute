@@ -157,7 +157,7 @@ impl RoadNetwork {
     ///   "type": "Feature",
     ///   "geometry": {
     ///     "type": "LineString",
-    ///     "coordinates": [[77.593, 12.976], [77.594, 12.975], ...]
+    ///     "coordinates": [[12.976, 77.593], [12.975, 77.594], ...]
     ///   },
     ///   "properties": {
     ///     "waypoints": 84,
@@ -188,10 +188,10 @@ impl RoadNetwork {
             }
         }
 
-        // GeoJSON uses [lon, lat] order (opposite of typical lat, lon)
+        // Using [lat, lon] order
         let positions: Vec<Vec<f64>> = coords
             .iter()
-            .map(|coord| vec![coord.lon, coord.lat])
+            .map(|coord| vec![coord.lat, coord.lon])
             .collect();
 
         // Create LineString geometry
