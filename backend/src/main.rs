@@ -1,26 +1,37 @@
-//! # Quiet Route Backend - Safe Pathfinding Demo
+//! # Quiet Route Backend - Safe Pathfinding API
 //!
-//! Demonstration application for the Quiet Route safe pedestrian routing system.
-//! Loads the Bangalore street network with safety metadata and finds an optimal
-//! route between two landmarks (Cubbon Park → MG Road).
+//! REST API for the Quiet Route safe pedestrian routing system.
+//! Loads the Bangalore street network with safety metadata and provides
+//! endpoints to find optimal safe walking routes.
 //!
-//! ## What This Demo Shows
+//! ## API Endpoints
 //!
-//! 1. **Data Loading**: Parses 500MB OSM file + 6 KML safety files
-//! 2. **Graph Construction**: Builds 853k node, 951k edge network with safety scores
-//! 3. **Coordinate Matching**: Maps GPS coordinates to graph nodes
-//! 4. **Safe Routing**: Uses A* with safety penalties to find optimal path
-//! 5. **API-Ready Output**: Returns waypoints, distance, and safety-weighted cost
+//! - `GET /health` - Health check
+//! - `POST /route` - Find safe route between two coordinates
 //!
-//! ## Output Interpretation
+//! ## Example Request
 //!
-//! - **Safety-weighted cost**: Higher = more dangerous route taken
-//! - **Actual distance**: Physical walking distance in meters
-//! - **Cost/Distance ratio**: ~1.0 = very safe, >2.0 = dangerous detours needed
+//! ```bash
+//! curl -X POST http://127.0.0.1:3000/route \
+//!   -H "Content-Type: application/json" \
+//!   -d '{
+//!     "start_lat": 12.923782,
+//!     "start_lon": 77.651635,
+//!     "end_lat": 12.912297,
+//!     "end_lon": 77.638196
+//!   }'
+//! ```
 //!
 //! Run with: `cargo run --release`
 
-use axum::{Router, routing::get};
+mod error;
+mod models;
+mod routes;
+mod state;
+
+use axum::{Router, routing::get, routing::post};
+use quiet_core::parser::parse_osm;
+use state::AppState;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEMO MAIN - Commented out for API server development
@@ -165,21 +176,36 @@ fn main() {
 }
 */
 
-async fn health_check() -> &'static str {
-    "Quiet Route API is running!"
-}
-
 #[tokio::main]
 async fn main() {
-    // Build the router
+    // Load the Bangalore street network at startup
+    let osm_path = "/Users/sushi/Dev/Rust/quiet-route/data/OSM (Open Map Data)/bengaluru.osm.pbf";
+
+    let network = match parse_osm(osm_path) {
+        Ok(net) => net,
+        Err(_e) => {
+            std::process::exit(1);
+        }
+    };
+
+    // Create shared application state
+    let state = AppState::new(network);
+
+    // Build the router with routes
     let app = Router::new()
-        .route("/", get(health_check))
-        .route("/health", get(health_check));
+        .route("/", get(routes::health_check))
+        .route("/health", get(routes::health_check))
+        .route("/route", post(routes::find_route))
+        .with_state(state);
 
     // Start the server
+    println!("Binding to http://127.0.0.1:3000");
+
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
         .expect("Failed to bind to port 3000");
+
+    println!("Server is running at http://127.0.0.1:3000");
 
     axum::serve(listener, app)
         .await
