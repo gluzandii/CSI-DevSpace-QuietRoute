@@ -1016,7 +1016,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "geojson",
- "geoutils",
  "kdtree",
  "osmpbf",
  "petgraph",
@@ -1548,6 +1547,7 @@ name = "utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "geoutils",
  "quick-xml",
  "tracing",
 ]
