@@ -10,14 +10,16 @@ use petgraph::graph::NodeIndex;
 
 /// Finds the safest path between two nodes in the road network.
 ///
-/// Uses A* algorithm with a custom cost function that penalizes unsafe streets.
-/// The cost for each street segment is: `distance × (1 / safety_score)`
+/// Uses A* algorithm with a custom cost function that heavily prioritizes safety over distance.
+/// The cost for each street segment is: `distance × (1 / safety_score)²`
 ///
 /// This means:
 /// - Safe streets (score 1.0): cost = distance (no penalty)
-/// - Dangerous streets (score 0.1): cost = distance × 10 (heavily penalized)
+/// - Moderately safe (score 0.5): cost = distance × 4 (moderate penalty)
+/// - Dangerous streets (score 0.1): cost = distance × 100 (extremely penalized)
 ///
-/// The algorithm naturally avoids dangerous routes when safer alternatives exist.
+/// The squared penalty means unsafe routes are exponentially more expensive,
+/// so the algorithm strongly prefers routes with better lighting and police proximity.
 ///
 /// # Arguments
 /// * `graph` - The road network graph with safety-scored edges
@@ -29,8 +31,8 @@ use petgraph::graph::NodeIndex;
 /// * `None` - If no path exists (disconnected graph components)
 ///
 /// # Cost Interpretation
-/// If cost ≈ distance: Route is very safe (minimal safety penalties)
-/// If cost >> distance: Route includes unsafe segments (high penalties)
+/// If cost ≈ distance: Route is very safe (excellent police/lighting coverage)
+/// If cost >> distance: Route includes unsafe segments (poor safety infrastructure)
 ///
 /// # Performance
 /// A* with straight-line heuristic explores far fewer nodes than Dijkstra,
@@ -47,13 +49,16 @@ pub fn find_safe_path(
         |edge_ref| {
             let edge = edge_ref.weight();
 
-            // --- THE MULTIPLIER ---
-            // We use the safety_score (0.1 to 1.0) we calculated earlier.
+            // SAFETY-PRIORITIZED COST CALCULATION
+            // We square the safety penalty to heavily penalize unsafe streets.
+            // This makes the algorithm prefer safer routes even if they're longer.
             // 1.0 (Safe) -> multiplier of 1.0
-            // 0.1 (Dangerous) -> multiplier of 10.0
+            // 0.5 (Medium) -> multiplier of 4.0
+            // 0.1 (Dangerous) -> multiplier of 100.0
             let safety_penalty = 1.0 / edge.safety_score.max(0.1);
+            let safety_penalty_squared = safety_penalty * safety_penalty;
 
-            edge.distance_meters * safety_penalty
+            edge.distance_meters * safety_penalty_squared
         },
         |node_idx| {
             // Heuristic: Straight-line distance to goal

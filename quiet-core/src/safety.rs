@@ -86,23 +86,24 @@ impl SafetyLayer {
 
     /// Calculates a safety score for a specific geographic coordinate.
     ///
-    /// Uses graduated distance-based scoring from both streetlights and police stations.
-    /// Closer proximity to safety infrastructure yields higher scores.
+    /// Uses graduated distance-based scoring with STRONG emphasis on police station proximity.
+    /// Closer proximity to police stations yields significantly higher scores.
+    /// Police proximity is the primary safety factor, with streetlights as secondary.
     ///
     /// # Scoring Algorithm
-    /// **Base score:** 0.5 (neutral)
+    /// **Base score:** 0.3 (neutral)
     ///
-    /// **Streetlight bonus (graduated by distance):**
-    /// - < 150m: +0.35 (excellent lighting)
-    /// - 150-300m: +0.25 (good lighting)
-    /// - 300-500m: +0.15 (moderate lighting)
-    /// - 500-800m: +0.05 (weak effect)
+    /// **Police station bonus (PRIMARY WEIGHT - graduated by distance):**
+    /// - < 300m: +0.45 (excellent coverage, very safe walking distance)
+    /// - 300-700m: +0.30 (good coverage)
+    /// - 700-1500m: +0.16 (moderate coverage)
+    /// - 1500-2500m: +0.08 (some coverage)
     ///
-    /// **Police station bonus (graduated by distance):**
-    /// - < 500m: +0.25 (very safe, walking distance)
-    /// - 500-1km: +0.15 (safe)
-    /// - 1-2km: +0.08 (moderately safe)
-    /// - 2-3km: +0.03 (slight boost)
+    /// **Streetlight bonus (secondary - graduated by distance):**
+    /// - < 150m: +0.20 (excellent lighting)
+    /// - 150-300m: +0.15 (good lighting)
+    /// - 300-500m: +0.08 (moderate lighting)
+    /// - 500-800m: +0.03 (weak effect)
     ///
     /// # Arguments
     /// * `lat` - Latitude in decimal degrees
@@ -112,9 +113,31 @@ impl SafetyLayer {
     /// Safety score from 0.0 (dangerous) to 1.0 (very safe), capped at 1.0
     pub fn get_safety_score(&self, lat: f64, lon: f64) -> f64 {
         let point = [lat, lon];
-        let mut score: f64 = 0.5; // Base score (Neutral)
+        let mut score: f64 = 0.3; // Base score (Neutral, lowered to allow police bonus to dominate)
 
-        // 1. Check Streetlights with graduated scoring based on ACTUAL distance in meters
+        // 1. PRIORITY: Check Police Stations with strong graduated scoring based on ACTUAL distance in meters
+        if let Ok(nearest) = self.police.nearest(&point, 1, &squared_euclidean) {
+            if let Some((_, nearest_coords)) = nearest.first() {
+                let dist_meters =
+                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
+
+                if dist_meters < 300.0 {
+                    // < 300m: Excellent coverage, very safe (walking distance)
+                    score += 0.35;
+                } else if dist_meters < 700.0 {
+                    // 300-700m: Good coverage
+                    score += 0.20;
+                } else if dist_meters < 1500.0 {
+                    // 700-1500m: Moderate coverage
+                    score += 0.10;
+                } else if dist_meters < 2500.0 {
+                    // 1500-2500m: Some coverage
+                    score += 0.05;
+                }
+            }
+        }
+
+        // 2. Secondary: Check Streetlights with graduated scoring based on ACTUAL distance in meters
         if let Ok(nearest) = self.lights.nearest(&point, 1, &squared_euclidean) {
             if let Some((_, nearest_coords)) = nearest.first() {
                 let dist_meters =
@@ -122,38 +145,16 @@ impl SafetyLayer {
 
                 if dist_meters < 150.0 {
                     // < 150m: Excellent lighting (very close)
-                    score += 0.35;
+                    score += 0.25;
                 } else if dist_meters < 300.0 {
                     // 150-300m: Good lighting
-                    score += 0.25;
+                    score += 0.20;
                 } else if dist_meters < 500.0 {
                     // 300-500m: Moderate lighting
-                    score += 0.15;
+                    score += 0.10;
                 } else if dist_meters < 800.0 {
                     // 500-800m: Weak lighting effect
                     score += 0.05;
-                }
-            }
-        }
-
-        // 2. Check Police Stations with graduated scoring based on ACTUAL distance in meters
-        if let Ok(nearest) = self.police.nearest(&point, 1, &squared_euclidean) {
-            if let Some((_, nearest_coords)) = nearest.first() {
-                let dist_meters =
-                    utils::geo::haversine_distance(lat, lon, nearest_coords[0], nearest_coords[1]);
-
-                if dist_meters < 500.0 {
-                    // < 500m: Very safe (walking distance)
-                    score += 0.25;
-                } else if dist_meters < 1000.0 {
-                    // 500m-1km: Safe
-                    score += 0.15;
-                } else if dist_meters < 2000.0 {
-                    // 1-2km: Moderately safe
-                    score += 0.08;
-                } else if dist_meters < 3000.0 {
-                    // 2-3km: Slight safety boost
-                    score += 0.03;
                 }
             }
         }
