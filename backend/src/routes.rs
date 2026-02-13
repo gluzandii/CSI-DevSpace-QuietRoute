@@ -5,7 +5,9 @@ use quiet_core::router::find_safe_path;
 
 use crate::{
     error::AppError,
-    models::{RouteRequest, RouteResponse},
+    models::{
+        NearestRoadCoord, NearestRoadRequest, NearestRoadResponse, RouteRequest, RouteResponse,
+    },
     state::AppState,
 };
 
@@ -49,4 +51,33 @@ pub async fn find_route(
         geojson,
         message: format!("Route found with {} waypoints", path.len()),
     }))
+}
+
+/// POST /nearestRoad - Find the nearest road to a given coordinate
+pub async fn nearest_road(
+    State(state): State<AppState>,
+    Json(request): Json<NearestRoadRequest>,
+) -> Result<Json<NearestRoadResponse>, AppError> {
+    const MAX_DISTANCE_METERS: f64 = 200.0;
+
+    match state
+        .network
+        .find_nearest_road(request.lat, request.lon, MAX_DISTANCE_METERS)
+    {
+        Some((coord, distance)) => Ok(Json(NearestRoadResponse {
+            coord: Some(NearestRoadCoord {
+                lat: coord.lat,
+                lon: coord.lon,
+                distance_meters: distance,
+            }),
+            message: format!("Found nearest road {:.2} meters away", distance),
+        })),
+        None => Ok(Json(NearestRoadResponse {
+            coord: None,
+            message: format!(
+                "No road found within {} meters of the specified coordinates",
+                MAX_DISTANCE_METERS
+            ),
+        })),
+    }
 }

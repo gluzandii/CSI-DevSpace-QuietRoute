@@ -204,6 +204,7 @@ async fn main() {
         .route("/", get(routes::health_check))
         .route("/health", get(routes::health_check))
         .route("/route", post(routes::find_route))
+        .route("/nearestRoad", post(routes::nearest_road))
         .with_state(state)
         .layer(cors);
 

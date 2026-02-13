@@ -139,6 +139,41 @@ impl RoadNetwork {
             .collect()
     }
 
+    /// Finds the nearest road node within a maximum distance threshold.
+    ///
+    /// This is useful for API clients that want to snap a user-provided coordinate
+    /// to the nearest actual road in the network. If no road is found within the
+    /// threshold distance, returns None.
+    ///
+    /// # Arguments
+    /// * `lat` - Latitude in decimal degrees
+    /// * `lon` - Longitude in decimal degrees
+    /// * `max_distance_meters` - Maximum acceptable distance to the nearest road
+    ///
+    /// # Returns
+    /// A tuple of (coordinate, distance_in_meters) if a road is found within the threshold,
+    /// or None if no road is close enough.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let result = network.find_nearest_road(12.93, 77.61, 500.0)?;
+    /// // Result: (Coord { lat: 12.931, lon: 77.611 }, 123.45)
+    /// ```
+    pub fn find_nearest_road(&self, lat: f64, lon: f64, max_distance_meters: f64) -> Option<(Coord, f64)> {
+        self.node_coords
+            .iter()
+            .map(|(_, coord)| {
+                let distance = utils::geo::haversine_distance(lat, lon, coord.lat, coord.lon);
+                (*coord, distance)
+            })
+            .filter(|(_, distance)| distance <= &max_distance_meters)
+            .min_by(|(_, dist_a), (_, dist_b)| {
+                dist_a
+                    .partial_cmp(dist_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    }
+
     /// Converts a routing path to GeoJSON LineString format.
     ///
     /// Creates a GeoJSON LineString feature representing the route, ready for
