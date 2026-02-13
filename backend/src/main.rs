@@ -15,10 +15,10 @@
 //! curl -X POST http://127.0.0.1:3000/route \
 //!   -H "Content-Type: application/json" \
 //!   -d '{
-//!     "start_lat": 12.923782,
-//!     "start_lon": 77.651635,
-//!     "end_lat": 12.912297,
-//!     "end_lon": 77.638196
+//!     "startLat": 12.923782,
+//!     "startLon": 77.651635,
+//!     "endLat": 12.912297,
+//!     "endLon": 77.638196
 //!   }'
 //! ```
 //!
