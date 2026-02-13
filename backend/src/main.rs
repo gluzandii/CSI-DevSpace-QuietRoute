@@ -29,9 +29,10 @@ mod models;
 mod routes;
 mod state;
 
-use axum::{Router, routing::get, routing::post};
+use axum::{http::Method, routing::get, routing::post, Router};
 use quiet_core::parser::parse_osm;
 use state::AppState;
+use tower_http::cors::{Any, CorsLayer};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEMO MAIN - Commented out for API server development
@@ -191,12 +192,20 @@ async fn main() {
     // Create shared application state
     let state = AppState::new(network);
 
+    // CORS (Cross-Origin Resource Sharing)
+    // NOTE: `Any` is fine for local development. For production, replace with a fixed allowlist.
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any);
+
     // Build the router with routes
     let app = Router::new()
         .route("/", get(routes::health_check))
         .route("/health", get(routes::health_check))
         .route("/route", post(routes::find_route))
-        .with_state(state);
+        .with_state(state)
+        .layer(cors);
 
     // Start the server
     println!("Binding to http://127.0.0.1:3000");
