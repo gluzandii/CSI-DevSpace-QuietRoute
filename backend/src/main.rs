@@ -20,9 +20,12 @@
 //!
 //! Run with: `cargo run --release`
 
-use quiet_core::parser::parse_osm;
-use quiet_core::router::find_safe_path;
+use axum::{Router, routing::get};
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEMO MAIN - Commented out for API server development
+// ═══════════════════════════════════════════════════════════════════════════════
+/*
 fn main() {
     println!("🚀 Quiet Route - Safe Pathfinding System\n");
     println!("═══════════════════════════════════════════════════════════\n");
@@ -159,4 +162,26 @@ fn main() {
             println!("   (This could happen if the points are in disconnected graph components)");
         }
     }
+}
+*/
+
+async fn health_check() -> &'static str {
+    "Quiet Route API is running!"
+}
+
+#[tokio::main]
+async fn main() {
+    // Build the router
+    let app = Router::new()
+        .route("/", get(health_check))
+        .route("/health", get(health_check));
+
+    // Start the server
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+        .await
+        .expect("Failed to bind to port 3000");
+
+    axum::serve(listener, app)
+        .await
+        .expect("Server failed to start");
 }
